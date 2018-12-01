@@ -1,3 +1,121 @@
-AWSTemplateFormatVersion: '2010-09-09'
-Transform: 'AWS::Serverless-2016-10-31'
-Resources: {}
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Resources:
+  api9C06605B:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub
+        - ${ResourceName} From Stack ${StackTagName} Environment ${EnvironmentTagName}
+        - ResourceName: images
+      StageName: !Ref EnvironmentAPIGatewayStageName
+      DefinitionBody:
+        openapi: '3.0'
+        info: {}
+        paths:
+          /image:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${functionEC0E49D3.Arn}/invocations
+              responses: {}
+          /images:
+            get:
+              responses: {}
+      EndpointConfiguration: REGIONAL
+    Metadata:
+      StackeryName: images
+  tableF7A0E88F:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: uid
+          AttributeType: S
+      KeySchema:
+        - AttributeName: uid
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      TableName: !Sub ${AWS::StackName}-tableF7A0E88F
+    Metadata:
+      StackeryName: images
+  functionEC0E49D3:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-functionEC0E49D3
+      Description: !Sub
+        - Stack ${StackTagName} Environment ${EnvironmentTagName} Function ${ResourceName}
+        - ResourceName: image-upload
+      CodeUri: src/image-upload
+      Handler: index
+      Runtime: provided
+      MemorySize: 3008
+      Timeout: 30
+      Tracing: Active
+      Policies:
+        - AWSXrayWriteOnlyAccess
+        - S3CrudPolicy:
+            BucketName: !Ref objectStore20D0EE0A
+      Events:
+        api9C06605BPOSTimage:
+          Type: Api
+          Properties:
+            Path: /image
+            Method: POST
+            RestApiId: !Ref api9C06605B
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref objectStore20D0EE0A
+          BUCKET_ARN: !GetAtt objectStore20D0EE0A.Arn
+    Metadata:
+      StackeryName: image-upload
+  objectStore20D0EE0A:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-objectstore20d0ee0a
+    Metadata:
+      StackeryName: ugc-images
+  function4F2950CE:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-function4F2950CE
+      Description: !Sub
+        - Stack ${StackTagName} Environment ${EnvironmentTagName} Function ${ResourceName}
+        - ResourceName: image-analyze
+      CodeUri: src/image-analyze
+      Handler: index.handler
+      Runtime: nodejs8.10
+      MemorySize: 3008
+      Timeout: 30
+      Tracing: Active
+      Policies:
+        - AWSXrayWriteOnlyAccess
+        - DynamoDBCrudPolicy:
+            TableName: !Ref tableF7A0E88F
+      Events:
+        objectStore20D0EE0A:
+          Type: S3
+          Properties:
+            Bucket: !Ref objectStore20D0EE0A
+            Events:
+              - s3:ObjectCreated:*
+              - s3:ObjectRemoved:*
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref tableF7A0E88F
+          TABLE_ARN: !GetAtt tableF7A0E88F.Arn
+    Metadata:
+      StackeryName: image-analyze
+Parameters:
+  StackTagName:
+    Type: String
+    Description: Stack Name (injected by Stackery at deployment time)
+  EnvironmentTagName:
+    Type: String
+    Description: Environment Name (injected by Stackery at deployment time)
+  EnvironmentAPIGatewayStageName:
+    Type: String
+    Description: Environment name used for API Gateway Stage names (injected by Stackery at deployment time)
